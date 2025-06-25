@@ -1,0 +1,15 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SEMS Source Control</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+</head>
+<body>
+  <h1>Switch Power Source</h1>
+  <form action="/switch/solar"><button type="submit">Solar</button></form><br>
+  <form action="/switch/battery"><button type="submit">Battery</button></form><br>
+  <form action="/switch/grid"><button type="submit">Grid</button></form><br>
+</body>
+</html>
