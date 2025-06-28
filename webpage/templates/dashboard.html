@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Energy Management System</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <div class="container py-4">
+        <h1 class="text-center mb-4">Energy Management System</h1>
+        
+        <!-- Status Panel -->
+        <div class="card mb-4">
+            <div class="card-header bg-primary text-white">
+                <h5 class="mb-0">System Status</h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="d-flex justify-content-between mb-2">
+                            <span>Operation Mode:</span>
+                            <span id="mode" class="badge bg-info">{{ state.mode|upper }}</span>
+                        </div>
+                        <div class="d-flex justify-content-between mb-2">
+                            <span>Power Source:</span>
+                            <span id="power-source" class="badge bg-success">{{ state.power_source|upper }}</span>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="d-flex justify-content-between mb-2">
+                            <span>Battery Voltage:</span>
+                            <span id="battery-voltage" class="fw-bold">{{ state.battery_voltage }}V</span>
+                        </div>
+                        <div class="progress mb-2" style="height: 25px;">
+                            <div id="battery-progress" class="progress-bar" 
+                                 role="progressbar"
+                                 style="width: {{ ((state.battery_voltage|default(10.5)) - 10.5) / (12.8 - 10.5) * 100 | round(1) }}%">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Control Panel -->
+        <div class="card mb-4">
+            <div class="card-header bg-secondary text-white">
+                <h5 class="mb-0">Control Panel</h5>
+            </div>
+            <div class="card-body">
+                <div class="row mb-3">
+                    <div class="col">
+                        <button id="auto-btn" class="btn btn-outline-primary w-100">
+                            AUTO MODE
+                        </button>
+                    </div>
+                    <div class="col">
+                        <button id="manual-btn" class="btn btn-outline-secondary w-100">
+                            MANUAL MODE
+                        </button>
+                    </div>
+                </div>
+                
+                <div class="row g-3">
+                    {% for relay, status in state.relay_status.items() %}
+                    <div class="col-md-3 col-6">
+                        <div class="card">
+                            <div class="card-body text-center">
+                                <h5 class="card-title">{{ relay|upper }}</h5>
+                                <div class="form-check form-switch">
+                                    <input class="form-check-input relay-switch" 
+                                           type="checkbox" 
+                                           data-relay="{{ relay }}"
+                                           {{ 'checked' if status }}>
+                                    <label class="form-check-label">
+                                        {{ 'ON' if status else 'OFF' }}
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+        
+        <!-- Data Visualization -->
+        <div class="card">
+            <div class="card-header bg-info text-white">
+                <h5 class="mb-0">Battery Status</h5>
+            </div>
+            <div class="card-body">
+                <canvas id="batteryChart" height="100"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Update system status every 3 seconds
+        function updateStatus() {
+            fetch('/status')
+                .then(response => response.json())
+                .then(data => {
+                    // Update status fields
+                    document.getElementById('mode').textContent = data.mode.toUpperCase();
+                    document.getElementById('power-source').textContent = data.power_source.toUpperCase();
+                    document.getElementById('battery-voltage').textContent = data.battery_voltage.toFixed(2) + 'V';
+                    
+                    // Update battery progress bar
+                    const batteryProgress = document.getElementById('battery-progress');
+                    const percent = ((data.battery_voltage - 10.5) / (12.8 - 10.5)) * 100;
+                    batteryProgress.style.width = `${percent}%`;
+                    
+                    // Update relay switches
+                    document.querySelectorAll('.relay-switch').forEach(switchEl => {
+                        const relay = switchEl.dataset.relay;
+                        switchEl.checked = data.relay_status[relay];
+                        switchEl.nextElementSibling.textContent = 
+                            data.relay_status[relay] ? 'ON' : 'OFF';
+                    });
+                    
+                    // Update chart
+                    updateChart(data.battery_voltage);
+                });
+        }
+        
+        // Initialize chart
+        const ctx = document.getElementById('batteryChart').getContext('2d');
+        const chart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: [],
+                datasets: [{
+                    label: 'Battery Voltage',
+                    data: [],
+                    borderColor: 'rgba(75, 192, 192, 1)',
+                    tension: 0.1,
+                    fill: false
+                }]
+            },
+            options: {
+                scales: {
+                    y: {
+                        min: 10,
+                        max: 13
+                    }
+                }
+            }
+        });
+        
+        // Chart data
+        const timeLabels = [];
+        const voltageData = [];
+        
+        // Update chart with new data
+        function updateChart(voltage) {
+            const now = new Date();
+            const timeString = `${now.getHours()}:${now.getMinutes()}:${now.getSeconds()}`;
+            
+            timeLabels.push(timeString);
+            voltageData.push(voltage);
+            
+            // Keep only last 10 readings
+            if (timeLabels.length > 10) {
+                timeLabels.shift();
+                voltageData.shift();
+            }
+            
+            chart.data.labels = timeLabels;
+            chart.data.datasets[0].data = voltageData;
+            chart.update();
+        }
+        
+        // Control handlers
+        document.getElementById('auto-btn').addEventListener('click', () => {
+            fetch('/control', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({mode: 'auto'})
+            });
+        });
+        
+        document.getElementById('manual-btn').addEventListener('click', () => {
+            fetch('/control', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({mode: 'manual'})
+            });
+        });
+        
+        document.querySelectorAll('.relay-switch').forEach(switchEl => {
+            switchEl.addEventListener('change', function() {
+                fetch('/control', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        relay: this.dataset.relay,
+                        state: this.checked
+                    })
+                });
+            });
+        });
+        
+        // Initial update and set interval
+        updateStatus();
+        setInterval(updateStatus, 3000);
+    </script>
+</body>
+</html>
