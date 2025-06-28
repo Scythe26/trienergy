@@ -1,0 +1,6 @@
+/energy_management/
+├── templates/
+│   └── dashboard.html
+├── static/
+│   └── style.css
+└── ems_web.py
